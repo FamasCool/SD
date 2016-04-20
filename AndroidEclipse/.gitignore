@@ -1,0 +1,11 @@
+/.metadata/
+.recommenders/
+.settings/
+bin/
+gen/
+project.properties
+proguard-project.txt
+.classpath
+.project
+ic_launcher-web.png
+lint.xml
