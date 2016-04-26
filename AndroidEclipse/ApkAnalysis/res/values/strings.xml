@@ -1,10 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
 
     <string name="app_name">ApkAnalysis</string>
-    <string name="hello_world">Hello world!</string>
-    <string name="action_settings">Settings</string>
-    <string name="start">Start</string>
-    <string name="stop">Stop</string>
+    <string name="action_start">Start</string>
+    <string name="action_resume">Resume</string>
+    <string name="action_stop">Stop</string>
+    <string name="action_select_apk">Select apk</string>
+    <string name="action_set_time">Set time</string>
+    <string name="action_clear_record">Clear record</string>
+    <string name="apk_name_title">Apk name</string>
+    <string name="cpu_use_hight_title">Maximum CPU usage</string>
+    <string name="cpu_use_average_title">Average CPU usage</string>
+    <string name="memory_use_hight_title">Maximum Memory usage</string>
+    <string name="memory_use_average_title">Average Memory usage</string>
+    <string name="time_title">Total time</string>
+    <string name="set_time_dialog_title">Set time</string>
+    <string name="set_time_dialog_tip">Set the interval recording (unit: seconds):</string>
+    <string name="cpu_display"><xliff:g id="cpu_usage">%s</xliff:g>"("<xliff:g id="time">%d</xliff:g>")"</string>
+    <string name="memory_display"><xliff:g id="cpu_usage">%s</xliff:g>"("<xliff:g id="time">%d</xliff:g>")"</string>
+    <string name="unknow_apk">Unknow</string>
+    <string name="select_apk_name">Select Apk</string>
 
 </resources>

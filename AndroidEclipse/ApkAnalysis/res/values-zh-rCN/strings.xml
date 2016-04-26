@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+
+    <string name="app_name">应用性能分析</string>
+    <string name="action_start">开始</string>
+    <string name="action_resume">继续</string>
+    <string name="action_stop">停止</string>
+    <string name="action_select_apk">选择应用</string>
+    <string name="action_set_time">设置时间</string>
+    <string name="action_clear_record">清楚记录</string>
+    <string name="apk_name_title">应用名称</string>
+    <string name="cpu_use_hight_title">CPU最大使用率</string>
+    <string name="cpu_use_average_title">CPU平均使用率</string>
+    <string name="memory_use_hight_title">最大内存使用</string>
+    <string name="memory_use_average_title">平均内存使用</string>
+    <string name="time_title">记录时间</string>
+    <string name="set_time_dialog_title">设置时间</string>
+    <string name="set_time_dialog_tip">设置记录时间间隔（单位：秒）：</string>
+    <string name="cpu_display"><xliff:g id="cpu_usage">%s</xliff:g>"("<xliff:g id="time">%d</xliff:g>")"</string>
+    <string name="memory_display"><xliff:g id="cpu_usage">%s</xliff:g>"("<xliff:g id="time">%d</xliff:g>")"</string>
+    <string name="unknow_apk">未知应用</string>
+    <string name="select_apk_name">选择应用</string>
+
+</resources>

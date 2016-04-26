@@ -1,10 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     
-    <string-array name="package_list">
-        <item>com.android.settings</item>
-    </string-array>
-    
     <integer name="refresh_time">30</integer>
     
 </resources>

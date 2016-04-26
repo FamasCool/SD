@@ -1,11 +1,41 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     tools:context="com.android.apkanalysis.ApkAnalysisActivity" >
-
+    
     <item
-        android:id="@+id/action_settings"
+        android:id="@+id/action_start"
         android:orderInCategory="100"
         android:showAsAction="never"
-        android:title="@string/action_settings"/>
-
+        android:title="@string/action_start"/>
+    
+    <item
+        android:id="@+id/action_resume"
+        android:orderInCategory="200"
+        android:showAsAction="never"
+        android:title="@string/action_resume"/>
+    
+    <item
+        android:id="@+id/action_stop"
+        android:orderInCategory="300"
+        android:showAsAction="never"
+        android:title="@string/action_stop"/>
+    
+    <item
+        android:id="@+id/action_select_apk"
+        android:orderInCategory="400"
+        android:showAsAction="never"
+        android:title="@string/action_select_apk"/>
+    
+    <item
+        android:id="@+id/action_clear_record"
+        android:orderInCategory="500"
+        android:showAsAction="never"
+        android:title="@string/action_clear_record"/>
+    
+    <item
+        android:id="@+id/action_set_time"
+        android:orderInCategory="600"
+        android:showAsAction="never"
+        android:title="@string/action_set_time"/>
+    
 </menu>

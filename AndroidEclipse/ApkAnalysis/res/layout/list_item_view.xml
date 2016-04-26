@@ -1,16 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:paddingLeft="@dimen/activity_horizontal_margin"
-    android:paddingRight="@dimen/activity_horizontal_margin"
-    android:paddingTop="@dimen/activity_vertical_margin"
-    android:paddingBottom="@dimen/activity_vertical_margin"
     android:orientation="vertical" >
-    
-    <View 
-        android:layout_width="match_parent"
-        android:layout_height="1px"
-        android:background="@color/divider_background" />
     
     <LinearLayout 
         android:layout_width="match_parent"
@@ -22,14 +14,14 @@
             android:background="@color/divider_background"/>
         
         <TextView
+            android:id="@+id/apk_name"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:textSize="@dimen/item_title_text_size"
             android:textColor="@color/item_title_text_color"
             android:layout_gravity="center"
-            android:gravity="center"
-            android:text="@string/apk_name_title"/>
+            android:gravity="center"/>
         
         <View 
             android:layout_width="1px"
@@ -37,14 +29,14 @@
             android:background="@color/divider_background"/>
         
         <TextView 
+            android:id="@+id/max_cpu_usage"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:textSize="@dimen/item_title_text_size"
             android:textColor="@color/item_title_text_color"
             android:layout_gravity="center"
-            android:gravity="center"
-            android:text="@string/cpu_use_hight_title"/>
+            android:gravity="center"/>
         
         <View 
             android:layout_width="1px"
@@ -52,14 +44,14 @@
             android:background="@color/divider_background"/>
         
         <TextView 
+            android:id="@+id/ave_cpu_usage"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:textSize="@dimen/item_title_text_size"
             android:textColor="@color/item_title_text_color"
             android:layout_gravity="center"
-            android:gravity="center"
-            android:text="@string/cpu_use_average_title"/>
+            android:gravity="center"/>
         
         <View 
             android:layout_width="1px"
@@ -67,14 +59,14 @@
             android:background="@color/divider_background"/>
         
         <TextView 
+            android:id="@+id/max_memory_usage"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:textSize="@dimen/item_title_text_size"
             android:textColor="@color/item_title_text_color"
             android:layout_gravity="center"
-            android:gravity="center"
-            android:text="@string/memory_use_hight_title"/>
+            android:gravity="center"/>
         
         <View 
             android:layout_width="1px"
@@ -83,14 +75,14 @@
         
         
         <TextView 
+            android:id="@+id/ave_memory_usage"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:textSize="@dimen/item_title_text_size"
             android:textColor="@color/item_title_text_color"
             android:layout_gravity="center"
-            android:gravity="center"
-            android:text="@string/memory_use_average_title"/>
+            android:gravity="center"/>
         
         <View 
             android:layout_width="1px"
@@ -98,14 +90,14 @@
             android:background="@color/divider_background"/>
         
         <TextView 
+            android:id="@+id/time"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:textSize="@dimen/item_title_text_size"
             android:textColor="@color/item_title_text_color"
             android:layout_gravity="center"
-            android:gravity="center"
-            android:text="@string/time_title"/>
+            android:gravity="center"/>
         
         <View 
             android:layout_width="1px"
@@ -118,13 +110,6 @@
         android:layout_width="match_parent"
         android:layout_height="1px"
         android:background="@color/divider_background" />
-	
-	<ListView 
-	    android:id="@+id/list"
-	    android:layout_width="match_parent"
-	    android:layout_height="wrap_content"
-	    android:scrollIndicators="none"
-	    android:divider="@null"
-	    android:scrollbars="none" />
+    
 
 </LinearLayout>

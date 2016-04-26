@@ -1,56 +1,66 @@
 package com.android.apkanalysis;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.text.DecimalFormat;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
-import java.util.List;
 
 import android.app.ActivityManager;
-import android.app.ActivityManager.MemoryInfo;
 import android.app.Notification;
 import android.app.Service;
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
-import android.content.pm.ApplicationInfo;
+import android.content.SharedPreferences.Editor;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.PackageManager.NameNotFoundException;
+import android.content.pm.ProviderInfo;
+import android.content.pm.ServiceInfo;
+import android.database.Cursor;
 import android.os.AsyncTask;
-import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
+import android.os.RemoteCallbackList;
+import android.os.RemoteException;
+import android.preference.PreferenceManager;
 import android.text.TextUtils;
 
 public class ApkAnalysisService extends Service {
 
 	private static final int MSG_RECORD = 0;
 
-	private static final int RECORD_DELAYED = 30 * 1000;
+	public static final int STATE_OFF = 0;
+	public static final int STATE_ON = 1;
 
-	private TopAsyncTask mTask;
+	private AnalysisAsyncTask mAnalysisTask;
+	private ReloadProcessNameTask mReloadTask;
 	private ActivityManager mActivityManager;
+	private PackageManager mPackageManager;
+	private RemoteCallbackList<IServiceCallback> mCallbacks;
+	private AnalysisDatabaseHelper mDataHelper;
+	private ArrayList<ApkProcessInfo> mApkProcessInfos;
 
-	private String mRecordFilePath;
-	private int mCurrentHour;
+	private int mDelayedTime;
+	private boolean mIsRecording;
+	private boolean mIsReady;
 
 	@Override
 	public IBinder onBind(Intent intent) {
-		return null;
+		return mBinder;
 	}
 
 	@Override
 	public void onCreate() {
+		mCallbacks = new RemoteCallbackList<IServiceCallback>();
 		mActivityManager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
-		mRecordFilePath = getCurrentRecordFilePath();
-		registerReceiver(mTimeChangedReceiver, new IntentFilter(Intent.ACTION_TIME_TICK));
-		mHandler.sendEmptyMessageDelayed(MSG_RECORD, RECORD_DELAYED);
+		mPackageManager = getPackageManager();
+		mDelayedTime = PreferenceManager.getDefaultSharedPreferences(this).getInt(Utils.REFRESH_TIME_KEY,
+				getResources().getInteger(R.integer.refresh_time));
+		mDataHelper = new AnalysisDatabaseHelper(this);
+		mReloadTask = new ReloadProcessNameTask();
+		mReloadTask.execute(new Void[] {});
+		mIsRecording = false;
+		mIsReady = false;
 		startForegroundService();
 		super.onCreate();
 	}
@@ -64,14 +74,234 @@ public class ApkAnalysisService extends Service {
 	@Override
 	public void onDestroy() {
 		stopForeground(true);
-		unregisterReceiver(mTimeChangedReceiver);
 		if (mHandler.hasMessages(MSG_RECORD)) {
 			mHandler.removeMessages(MSG_RECORD);
 		}
-		if (mTask != null && mTask.getStatus() == AsyncTask.Status.RUNNING) {
-			mTask.cancel(true);
+		if (mIsRecording) {
+			Editor e = PreferenceManager.getDefaultSharedPreferences(this).edit();
+			e.putLong(Utils.STOP_TIME_KEY, Calendar.getInstance().getTimeInMillis());
+			e.commit();
 		}
+		mIsRecording = false;
+		stopAnaylsisTask();
+		stopReloatTask();
 		super.onDestroy();
+	}
+
+	private String getProcessInfo(String cmd) {
+		String str = null;
+		try {
+			int result = ShellExe.execCommand(cmd);
+			if (result == ShellExe.RESULT_SUCCESS) {
+				str = ShellExe.getOutput();
+			} else if (result == ShellExe.RESULT_FAIL) {
+				Log.e(this, "getProcessInfo=>result fail");
+			} else if (result == ShellExe.RESULT_EXCEPTION) {
+				Log.e(this, "getProcessinfo=>result exception");
+			}
+		} catch (Exception e) {
+			Log.e(this, "getProcessInfo=>error: ", e);
+		}
+		return str;
+	}
+
+	private long getMemoryUseSize(int pid) {
+		long result = 0;
+		if (pid >= 0) {
+			try {
+				android.os.Debug.MemoryInfo[] infos = mActivityManager.getProcessMemoryInfo(new int[] { pid });
+				if (infos != null && infos.length >= 1) {
+					result = infos[0].getTotalPss();
+				}
+			} catch (Exception e) {
+				Log.e(this, "getMemoryUseInfo=>error: ", e);
+			}
+		}
+		return result;
+	}
+	
+	private ArrayList<ApkProcessInfo> reloadRecordApkProcess() {
+		ArrayList<ApkProcessInfo> result = new ArrayList<ApkProcessInfo>();
+		ArrayList<ApkInfo> apkInfos = getDataBaseApkInfos();
+
+		ApkInfo ai = null;
+		for (int i = 0; i < apkInfos.size(); i++) {
+			ai = apkInfos.get(i);
+			ApkProcessInfo api = new ApkProcessInfo(ai.getPackageName(), ai.getPackageName());
+			api.setProcessList(getApkProcesses(ai.getPackageName()));
+			Log.d(this, "reloadRecordApkProcess=>api: " + api.toString());
+			result.add(api);
+		}
+		return result;
+	}
+
+	private ArrayList<ApkInfo> getDataBaseApkInfos() {
+		ArrayList<ApkInfo> result = new ArrayList<ApkInfo>();
+		Cursor c = mDataHelper.queryAllApk();
+
+		if (c != null) {
+			String name = null;
+			String packageName = null;
+			if (c.getCount() > 0) {
+				while (c.moveToNext()) {
+					name = c.getString(c.getColumnIndexOrThrow(AnalysisDatabaseHelper.APK_NAME));
+					packageName = c.getString(c.getColumnIndexOrThrow(AnalysisDatabaseHelper.PACKAGE_NAME));
+					result.add(new ApkInfo(null, name, packageName, null, false));
+				}
+			}
+			c.close();
+		}
+		return result;
+	}
+
+	private ArrayList<String> getApkProcesses(String packageName) {
+		ArrayList<String> result = new ArrayList<String>();
+		result.add(packageName);
+		String process = null;
+		try {
+			PackageInfo pi = mPackageManager.getPackageInfo(packageName, PackageManager.GET_ACTIVITIES
+					| PackageManager.GET_PROVIDERS | PackageManager.GET_SERVICES | PackageManager.GET_RECEIVERS);
+			process = pi.applicationInfo.processName;
+			if (!isContainer(result, process)) {
+				result.add(process);
+			}
+			ActivityInfo[] ais = pi.activities;
+			ActivityInfo ai = null;
+			if (ais != null && ais.length > 0) {
+				for (int i = 0; i < ais.length; i++) {
+					ai = ais[i];
+					if (!isContainer(result, ai.processName)) {
+						result.add(ai.processName);
+					}
+				}
+			}
+			ServiceInfo[] sis = pi.services;
+			ServiceInfo si = null;
+			if (sis != null && sis.length > 0) {
+				for (int i = 0; i < sis.length; i++) {
+					si = sis[i];
+					if (!isContainer(result, si.processName)) {
+						result.add(si.processName);
+					}
+				}
+			}
+			ProviderInfo[] pdis = pi.providers;
+			ProviderInfo pdi = null;
+			if (pdis != null && pdis.length > 0) {
+				for (int i = 0; i < pdis.length; i++) {
+					pdi = pdis[i];
+					if (!isContainer(result, pdi.processName)) {
+						result.add(pdi.processName);
+					}
+				}
+			}
+			ais = null;
+			ais = pi.receivers;
+			ai = null;
+			if (ais != null && ais.length > 0) {
+				for (int i = 0; i < ais.length; i++) {
+					ai = ais[i];
+					if (!isContainer(result, ai.processName)) {
+						result.add(ai.processName);
+					}
+				}
+			}
+		} catch (NameNotFoundException e) {
+			Log.e(this, "getApkProcesses=>size: " + result.size() + " packageName: " + packageName);
+		}
+		return result;
+	}
+	
+	private boolean isContainer(ArrayList<String> list, String value) {
+		boolean result = false;
+		if (TextUtils.isEmpty(value)) {
+			result = true;
+		} else {
+			if (list != null) {
+				for (int i = 0; i < list.size(); i++) {
+					if (list.get(i).equals(value)) {
+						result = true;
+						break;
+					}
+				}
+			}
+		}
+		return result;
+	}
+
+	private void notifyRecordStateChanged() {
+		int length = mCallbacks.beginBroadcast();
+		for (int i = 0; i < length; i++) {
+			IServiceCallback callback = mCallbacks.getBroadcastItem(i);
+			try {
+				callback.onRecordStateChanged(mIsRecording);
+			} catch (RemoteException e) {
+				Log.e(this, "notifyRecordStateChanged=>error: ", e);
+			}
+		}
+		mCallbacks.finishBroadcast();
+	}
+
+	private void notifyRecordDataChanged() {
+		int length = mCallbacks.beginBroadcast();
+		for (int i = 0; i < length; i++) {
+			IServiceCallback callback = mCallbacks.getBroadcastItem(i);
+			try {
+				callback.onDataChanged();
+			} catch (RemoteException e) {
+				Log.e(this, "notifyRecordStateChanged=>error: ", e);
+			}
+		}
+		mCallbacks.finishBroadcast();
+	}
+
+	private ArrayList<String> getTopProcessInfos(String top) {
+		String[] strs = top.split(" ");
+		ArrayList<String> list = new ArrayList<String>();
+		for (int i = 0; i < strs.length; i++) {
+			if (!"".equals(strs[i]) && !" ".equals(strs[i])) {
+				list.add(strs[i]);
+			}
+		}
+		if (list.size() > 10) {
+			String end = list.get(9);
+			int index = top.lastIndexOf(end);
+			if (index > 0) {
+				String name = top.substring(index, top.length());
+				for (int i = 9; i < list.size(); i++) {
+					list.remove(i);
+				}
+				list.set(9, name);
+			}
+		}
+		return list;
+	}
+
+	private void stopAnaylsisTask() {
+		if (mAnalysisTask != null && mAnalysisTask.getStatus() == AsyncTask.Status.RUNNING) {
+			mAnalysisTask.cancel(true);
+		}
+		mAnalysisTask = null;
+	}
+
+	private void stopReloatTask() {
+		if (mReloadTask != null && mReloadTask.getStatus() == AsyncTask.Status.RUNNING) {
+			mReloadTask.cancel(true);
+		}
+		mReloadTask = null;
+	}
+	
+	private ArrayList<AnalysisInfo> createAnalysisInfos() {
+		ArrayList<AnalysisInfo> result = new ArrayList<AnalysisInfo>();
+		ArrayList<ApkInfo> ais = getDataBaseApkInfos();
+		Calendar c = Calendar.getInstance();
+		ApkInfo ai = null;
+		for (int i = 0; i < ais.size(); i++) {
+			ai = ais.get(i);
+			AnalysisInfo info = new AnalysisInfo(ai.getPackageName(), c.getTimeInMillis());
+			result.add(info);
+		}
+		return result;
 	}
 
 	private void startForegroundService() {
@@ -81,292 +311,187 @@ public class ApkAnalysisService extends Service {
 		startForeground(10, status);
 	}
 
-	private String getCurrentRecordFilePath() {
-		SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHH");
-		Calendar c = Calendar.getInstance();
-		mCurrentHour = c.get(Calendar.HOUR_OF_DAY);
-		String currentTime = sdf.format(c.getTime());
-		String recordFileName = currentTime + ".txt";
-		File recordFile = new File(getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), recordFileName);
-		if (!recordFile.exists()) {
-			try {
-				recordFile.createNewFile();
-			} catch (IOException e) {
-				Log.e(this, "getCurrentRecordFilePath=>error: ", e);
-			}
-		}
-		Log.d(this, "getCureentRecordFilePath=>path: " + recordFile.getAbsolutePath());
-		return recordFile.getAbsolutePath();
-	}
-
-	private void updateCurrentRecordFilePath() {
-		Calendar c = Calendar.getInstance();
-		int hour = c.get(Calendar.HOUR_OF_DAY);
-		Log.d(this, "updateCurrentRecordFilePath=>hour: " + hour + " last: " + mCurrentHour);
-		if (hour != mCurrentHour) {
-			mRecordFilePath = getCurrentRecordFilePath();
-		}
-	}
-
-	private String getProcessInfo(String cmd) {
-		String str = null;
-		try {
-			int result = ShellExe.execCommand("top -n 1");
-			if (result == ShellExe.RESULT_SUCCESS) {
-				str = ShellExe.getOutput();
-			} else if (result == ShellExe.RESULT_FAIL) {
-				/// TODO: do fail in this
-			} else if (result == ShellExe.RESULT_EXCEPTION) {
-				/// TODO: do exception in this
-			}
-		} catch (Exception e) {
-			Log.e(this, "getProcessInfo=>error: ", e);
-		}
-		return str;
-	}
-
-	private ArrayList<ApkInfo> getThirdApkInfoList() {
-		ArrayList<ApkInfo> result = new ArrayList<ApkInfo>();
-		PackageManager pm = getPackageManager();
-		List<PackageInfo> packageInfoList = pm.getInstalledPackages(0);
-		PackageInfo info = null;
-		int flag = 0;
-		String label = null;
-		String packageName = null;
-		String processName = null;
-		if (packageInfoList != null) {
-			for (int i = 0; i < packageInfoList.size(); i++) {
-				info = packageInfoList.get(i);
-				if (info != null) {
-					flag = info.applicationInfo.flags;
-					if ((flag & ApplicationInfo.FLAG_SYSTEM) == 0) {
-						label = (String) info.applicationInfo.loadLabel(pm);
-						packageName = info.applicationInfo.packageName;
-						processName = info.applicationInfo.processName;
-						result.add(new ApkInfo(label, packageName, processName));
-						//Log.d(this, "getThirdApkInfoList=>label: " + label + ", packageName: " + packageName
-						//		+ ", processName: " + processName);
-					}
-				}
-			}
-		}
-		Log.d(this, "getThirdApkInfoList=>size: " + result.size());
-		return result;
-	}
-
-	private ProcessInfo createProcessInfo(String str) {
-		ProcessInfo info = null;
-		String[] strs = str.split(" ");
-		ArrayList<String> infoList = new ArrayList<String>();
-		for (int i = 0; i < strs.length; i++) {
-			if (!TextUtils.isEmpty(strs[i])) {
-				infoList.add(strs[i]);
-			}
-		}
-		//Log.d(this, "createProcessInfo=>size: " + infoList.size());
-		if (infoList.size() == 10) {
-			info = new ProcessInfo(infoList);
-		}
-		//Log.d(this, "createProcessInfo=>info: " + (info != null ? info.toString() : "null") + " str: " + str);
-		return info;
-	}
-
-	private StringBuilder getRecordMessage(ArrayList<ApkInfo> apkInfo, ArrayList<ProcessInfo> processInfo) {
-		StringBuilder result = new StringBuilder();
-		SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-		Calendar c = Calendar.getInstance();
-		String currentTime = sdf.format(c.getTime());
-
-		result.append("\n");
-		result.append(" --------------------------------------------------------\n");
-		result.append("|Record Time: " + currentTime + "                        |\n");
-		result.append(" --------------------------------------------------------\n");
-		result.append("|Apk Name                      |Cpu use     |Memory use  |\n");
-		result.append(" --------------------------------------------------------\n");
-		ApkInfo apk = null;
-		ProcessInfo process = null;
-		boolean isActive = false;
-		int cpuUse = 0;
-		long memoryUse = 0;
-		for (int i = 0; i < apkInfo.size(); i++) {
-			apk = apkInfo.get(i);
-			// Log.d(this, "getRecordMessage=>apk: " + apk.toString());
-			for (int j = 0; j < processInfo.size(); j++) {
-				process = processInfo.get(j);
-				// Log.d(this, "getRecordMessage=>process: " +
-				// process.toString());
-				if (process.getName().contains(apk.getProcessName())) {
-					cpuUse += getCpuUse(process.getCpu());
-					memoryUse += getMemoryUseSize(process.getPid());
-					Log.d(this, "getRecordMessage=>apk: " + apk.toString() + " process: " + process.getName() + " cpu: "
-							+ getCpuUse(process.getCpu()) + " memory: " + getMemoryUseSize(process.getPid()));
-					isActive = true;
-				}
-			}
-			// Log.d(this, "getRecordMessage=>active: " + isActive);
-			if (!isActive) {
-				result.append("|" + String.format("%-30s", apk.getLabel()) + "|" + String.format("%-12s", "inactive")
-						+ "|" + String.format("%-12s", "inactive") + "|\n");
-				result.append("---------------------------------------------------------\n");
-			} else {
-				// result.append("|" + String.format("%-30s", apk.getLabel()) +
-				// "|"
-				// + String.format("%-12s", process.getCpu()) + "|"
-				// + String.format("%-12s", formatMemoryUse(process.getRss())) +
-				// "|\n");
-				result.append(
-						"|" + String.format("%-30s", apk.getLabel()) + "|" + String.format("%-12s", (cpuUse + "%"))
-								+ "|" + String.format("%-12s", formatStorage(memoryUse)) + "|\n");
-				result.append(" --------------------------------------------------------\n");
-			}
-			Log.d(this, "\n");
-			cpuUse = 0;
-			memoryUse = 0;
-			isActive = false;
-		}
-
-		return result;
-	}
-
-	private int getCpuUse(String cpuStr) {
-		int cpu = 0;
-		if (!TextUtils.isEmpty(cpuStr) && cpuStr.length() >= 2) {
-			try {
-				String c = cpuStr.substring(0, cpuStr.length() - 1);
-				cpu = Integer.parseInt(c);
-			} catch (Exception e) {
-				Log.e(this, "getCpuUse=>error: ", e);
-			}
-		}
-		Log.d(this, "getCpuUse=>cpu: " + cpu + " str: " + cpuStr);
-		return cpu;
-	}
-
-	private long getMemoryUseSize(String pidStr) {
-		long result = 0;
-		if (!TextUtils.isEmpty(pidStr)) {
-			try {
-				int pid = Integer.parseInt(pidStr);
-				android.os.Debug.MemoryInfo[] infos = mActivityManager.getProcessMemoryInfo(new int[] { pid });
-				if (infos != null && infos.length >= 1) {
-					result = infos[0].getTotalPss();//infos[0].getTotalPrivateDirty() + infos[0].getTotalPrivateClean() + infos[0].getT;
-					//Log.d(this, "getMemoryUseInfo=>size: " + result);
-				}
-			} catch (Exception e) {
-				Log.e(this, "getMemoryUseInfo=>error: ", e);
-			}
-		}
-		return result;
-	}
-
-	private String formatMemoryUse(String memoryUse) {
-		String result = null;
-		if (memoryUse != null && !TextUtils.isEmpty(memoryUse) && memoryUse.length() >= 2) {
-			String memoryStr = memoryUse.substring(0, memoryUse.length() - 1);
-			try {
-				long memory = Long.parseLong(memoryStr);
-				result = formatStorage(memory);
-			} catch (Exception e) {
-				Log.e(this, "formatMemoryUse=>error: ", e);
-			}
-		}
-		return result;
-	}
-
-	private String formatStorage(long storage) {
-		String result = null;
-		long MB = 1024;
-		long GB = 1024 * MB;
-		DecimalFormat df = new DecimalFormat("#.00");
-		if (storage >= 0 && storage < MB) {
-			result = storage + "KB";
-		} else if (storage >= MB && storage < GB) {
-			result = df.format((double) storage / MB) + "MB";
-		} else if (storage >= GB) {
-			result = df.format((double) storage / GB) + "GB";
-		}
-		return result;
-	}
-
-	private BroadcastReceiver mTimeChangedReceiver = new BroadcastReceiver() {
-
-		@Override
-		public void onReceive(Context context, Intent intent) {
-			String action = intent.getAction();
-			if (Intent.ACTION_TIME_TICK.equals(action)) {
-				updateCurrentRecordFilePath();
-			}
-		}
-	};
-
 	private Handler mHandler = new Handler() {
 		@Override
 		public void handleMessage(Message msg) {
 			Log.d(this, "handleMessage=>what: " + msg.what);
 			switch (msg.what) {
 			case MSG_RECORD:
-				if (mTask != null && (mTask.getStatus() != AsyncTask.Status.FINISHED)) {
-					mTask.cancel(true);
-					mTask = null;
+				if (mIsReady) {
+					if (mAnalysisTask != null && (mAnalysisTask.getStatus() != AsyncTask.Status.FINISHED)) {
+						mAnalysisTask.cancel(true);
+						mAnalysisTask = null;
+					}
+					mAnalysisTask = new AnalysisAsyncTask();
+					mAnalysisTask.execute(new Void[] {});
+					mHandler.sendEmptyMessageDelayed(MSG_RECORD, mDelayedTime * 1000);
 				}
-				mTask = new TopAsyncTask();
-				mTask.execute(new Void[] {});
-				mHandler.sendEmptyMessageDelayed(MSG_RECORD, RECORD_DELAYED);
 				break;
 			}
 		}
 	};
 
-	class TopAsyncTask extends AsyncTask<Void, Void, Void> {
+	class ReloadProcessNameTask extends AsyncTask<Void, Void, Void> {
 
 		@Override
 		protected Void doInBackground(Void... params) {
-			ArrayList<ApkInfo> apkInfoList = getThirdApkInfoList();
-			ArrayList<ProcessInfo> processInfoList = new ArrayList<ProcessInfo>();
-			String result = getProcessInfo("top -n 1");
-			String[] strs = result.split("\n");
-			Log.d(this, "doInBackground=>length: " + strs.length);
-			for (int i = 0; i < strs.length; i++) {
-				// Log.d(this, "doInBackground=>line(" + i + "): " + strs[i]);
-				if (i >= 7 && !TextUtils.isEmpty(strs[i])) {
-					ProcessInfo info = createProcessInfo(strs[i]);
-					if (info != null) {
-						// Log.d(this, "doInBackground=>info: " +
-						// info.toString());
-						processInfoList.add(info);
-					}
-				}
-			}
-			Log.d(this, "doInBackground=>process size: " + processInfoList.size());
-			StringBuilder sb = getRecordMessage(apkInfoList, processInfoList);
-			File file = new File(mRecordFilePath);
-			Log.d(this, "doInBackground=>exists: " + file.exists() + " canWrite: " + file.canWrite());
-			try {
-				if (!file.exists()) {
-					file.createNewFile();
-				}
-				FileWriter fWriter = new FileWriter(file, true);
-				BufferedWriter out = new BufferedWriter(fWriter);
-				out.write(sb.toString());
-				out.close();
-			} catch (IOException e) {
-				Log.e(this, "doInBackground=>error: ", e);
+			mApkProcessInfos = reloadRecordApkProcess();
+			mDataHelper.clearProcessRecorder();
+			Log.d(this, "doInBackground=>size: " + mApkProcessInfos.size());
+			for (int i = 0; i < mApkProcessInfos.size(); i++) {
+				mDataHelper.insertProcess(mApkProcessInfos.get(i));
 			}
 			return null;
 		}
 
 		@Override
-		protected void onCancelled() {
-			Log.d(this, "onCancelled()...");
-			super.onCancelled();
+		protected void onPostExecute(Void result) {
+			super.onPostExecute(result);
+			Log.d(this, "onPostExecute=>reload process name finish.");
+			mIsReady = true;
+			if (mIsRecording) {
+				if (mHandler.hasMessages(MSG_RECORD)) {
+					mHandler.removeMessages(MSG_RECORD);
+				}
+				stopAnaylsisTask();
+				mDataHelper.clearAnalysisRecorder();
+				mHandler.sendEmptyMessage(MSG_RECORD);
+			}
+		}
+
+	};
+
+	class AnalysisAsyncTask extends AsyncTask<Void, Void, Void> {
+
+		@Override
+		protected Void doInBackground(Void... params) {
+			ArrayList<AnalysisInfo> infos = createAnalysisInfos();
+			String result = getProcessInfo("top -n 1");
+			String[] strs = result.split("\n");
+			ArrayList<String> tpis = null;
+			ApkProcessInfo api = null;
+			AnalysisInfo ai = null;
+			int pid = -1;
+			int cpu = 0;
+			long pss = 0;
+			Log.d(this, "doInBackground=>length: " + strs.length);
+			for (int i = 0; i < strs.length; i++) {
+				if (i >= 7 && !TextUtils.isEmpty(strs[i])) {
+					tpis = getTopProcessInfos(strs[i]);
+					for (int j = 0; j < mApkProcessInfos.size(); j++) {
+						api = mApkProcessInfos.get(j);
+						if (api.isApkProcess(tpis.get(9))) {
+							pid = Utils.parseInt(tpis.get(0));
+							cpu = Utils.parseCpu(tpis.get(2));
+							pss = getMemoryUseSize(pid);
+							Log.d(this, "doInBackground=>process: " + tpis.get(9) + " pid: " + pid + " cpu: " + cpu
+									+ " pss: " + pss);
+							infos.get(j).increaseCpu(cpu);
+							infos.get(j).increaseMemory(pss);
+							break;
+						}
+					}
+				}
+				tpis = null;
+				api = null;
+				ai = null;
+				pid = -1;
+				cpu = 0;
+				pss = 0;
+			}
+			for (int i = 0; i < infos.size(); i++) {
+				mDataHelper.insertAnalysis(infos.get(i));
+			}
+			return null;
 		}
 
 		@Override
 		protected void onPostExecute(Void param) {
-			Log.d(this, "onPostExecute()...");
+			Log.d(this, "onPostExecute=>analysis finish.");
+			notifyRecordDataChanged();
 			super.onPostExecute(param);
 		}
 
 	}
+
+	private IApkAnalysisService.Stub mBinder = new IApkAnalysisService.Stub() {
+
+		@Override
+		public void stopRecord() throws RemoteException {
+			Log.d(this, "stopRecord=>isRecording: " + mIsRecording);
+			if (mIsRecording) {
+				mHandler.removeMessages(MSG_RECORD);
+				mIsRecording = false;
+				notifyRecordStateChanged();
+			}
+		}
+
+		@Override
+		public void startRecord() throws RemoteException {
+			Log.d(this, "stopRecord=>startRecord: " + mIsRecording);
+			if (!mIsRecording) {
+				mHandler.sendEmptyMessage(MSG_RECORD);
+				mIsRecording = true;
+				notifyRecordStateChanged();
+			}
+		}
+
+		@Override
+		public void refreshRecordApk() throws RemoteException {
+			Log.d(this, "refreshRecordApk()...");
+			stopReloatTask();
+			mReloadTask = new ReloadProcessNameTask();
+			mReloadTask.execute(new Void[] {});
+		}
+
+		@Override
+		public void refreshTimeChanged(int time) throws RemoteException {
+			Log.d(this, "refreshTimeChanged=>time: " + time);
+			mDelayedTime = time;
+			if (mIsRecording) {
+				stopAnaylsisTask();
+				if (mHandler.hasMessages(MSG_RECORD)) {
+					mHandler.removeMessages(MSG_RECORD);
+				}
+				mHandler.sendEmptyMessage(MSG_RECORD);
+			}
+		}
+
+		@Override
+		public void registerCallback(final IServiceCallback callback) throws RemoteException {
+			Log.d(this, "registerCallback=>callback: " + callback);
+			if (callback != null) {
+				mCallbacks.register(callback);
+				callback.asBinder().linkToDeath(new DeathRecipient() {
+
+					@Override
+					public void binderDied() {
+						mCallbacks.unregister(callback);
+					}
+				}, 0);
+			}
+		}
+
+		@Override
+		public void unregisterCallback(final IServiceCallback callback) throws RemoteException {
+			Log.d(this, "unregisterCallback=>callback: " + callback);
+			if (callback != null) {
+				mCallbacks.unregister(callback);
+				callback.asBinder().linkToDeath(new DeathRecipient() {
+
+					@Override
+					public void binderDied() {
+						mCallbacks.unregister(callback);
+					}
+				}, 0);
+			}
+		}
+
+		@Override
+		public boolean isRecording() throws RemoteException {
+			Log.d(this, "isRecording=>isRecording: " + mIsRecording);
+			return mIsRecording;
+		}
+	};
 
 }

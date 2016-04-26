@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    
+    <color name="divider_background">#66666666</color>
+    <color name="item_title_text_color">#ff000000</color>
+    
+</resources>
