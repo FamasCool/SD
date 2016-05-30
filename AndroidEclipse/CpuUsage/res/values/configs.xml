@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    
+    <color name="cpu_usage_view_background">#ff1884e2</color>
+    <color name="cpu_usage_view_text_color">#ff37d551</color>
+    <color name="cpu_usage_view_path_color">#ffffffff</color>
+    
+    <integer name="cpu_usage_view_padding_left">1</integer>
+    <integer name="cpu_usage_view_padding_top">1</integer>
+    <integer name="cpu_usage_view_padding_right">1</integer>
+    <integer name="cpu_usage_view_padding_bottom">1</integer>
+    <integer name="cpu_usage_text_alpha">100</integer>
+    <integer name="cpu_usage_view_path_width">2</integer>
+    <integer name="cpu_usage_view_path_step">4</integer>
+    <integer name="cpu_usage_view_refresh_time">2000</integer>
+    
+    <bool name="show_cpu_text">true</bool>
+    
+    <dimen name="cpu_usage_text_size">12sp</dimen>
+    
+    <string name="cpu_stat_path">/proc/stat</string>
+    
+</resources>
