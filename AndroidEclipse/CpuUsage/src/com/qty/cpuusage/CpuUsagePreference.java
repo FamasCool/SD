@@ -7,6 +7,7 @@ import android.preference.PreferenceManager;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.ViewGroup.LayoutParams;
 import android.widget.GridLayout;
 
@@ -31,7 +32,8 @@ public class CpuUsagePreference extends Preference {
 	}
 	
 	@Override
-	protected void onBindView(View view) {
+	protected View onCreateView(ViewGroup parent) {
+		View view =  super.onCreateView(parent);
 		mCpuUsageContainer = (GridLayout) view.findViewById(R.id.gird_containt);
 		int core = CpuUtils.getCpuCore();
 		if (DEBUG) Log.d(TAG, "onBindView=>core: " + core);
@@ -60,7 +62,7 @@ public class CpuUsagePreference extends Preference {
 			summary.append(CpuUtils.formatFrequency(freq));
 		}
 		setSummary(summary.toString());
-		super.onBindView(view);
+		return view;
 	}
 	
 	@Override
