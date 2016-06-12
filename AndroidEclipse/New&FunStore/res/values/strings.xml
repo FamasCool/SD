@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">News &amp; Fun Store</string>
+    <string name="news_and_fun_store_label">News and Fun Store</string>
+    <string name="sms_news_activity_label">Sms News</string>
+    <string name="news_and_fun_store_tip">GPhone Fun Store</string>
+    <string name="sms_news_text">1.    SMS News</string>
+    <string name="gphone_zone_text">2.    GPhone Zone</string>
+    <string name="gphone_zone_uri">http://mediafun.mobi/gphone</string>
+    <string name="sms_news_tip">Sms News</string>
+    <string name="cricket_news_title">1.    Cricket News</string>
+    <string name="breaking_news_title">2.    Breaking News</string>
+    <string name="cricket_news_dialog_title">Chircket News</string>
+    <string name="breaking_news_dialog_title">Breaking News</string>
+    <string name="start">Start</string>
+    <string name="stop">Stop</string>
+    <string name="cricket_news_dialog_message">Tk 2/SMS Charge will applicable for the service. Click START to Continue</string>
+    <string name="breaking_news_dialog_message">Tk 2/SMS SMS Charge will applicable for the service. Click START to Contine.</string>
+    <string name="cricket_news_number">5959</string>
+    <string name="cricket_news_start_message">START SGSC</string>
+    <string name="cricket_news_stop_message">STOP SGSC</string>
+    <string name="breaking_news_number">5959</string>
+    <string name="breaking_news_start_message">START SGSN</string>
+    <string name="breaking_news_stop_message">STOP SGSN</string>
+    <string name="success">Success</string>
+    <string name="fail">Fail</string>
+
+</resources>
